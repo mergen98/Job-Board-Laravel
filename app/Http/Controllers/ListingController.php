@@ -30,28 +30,27 @@ class ListingController extends Controller
                     ->orWhere('location', 'like', "%{$searchQuery}%");
             });
         }
+        
         if ($request->has('tag')) {
             $tag = $request->get('tag');
             $query->whereHas('tags', function (Builder $builder) use ($tag) {
                 $builder->where('slug', $tag);
             });
         }
-    
+        
         $listings = $query->get();
-    
+        
         $tags = Tag::orderBy('name')
             ->get();
-//        dd($listings,$tags);
-    
+        
         return view('listings.index', compact('listings', 'tags'));
     }
     
     public function show(Listing $listing, Request $request)
     {
-//        return $listing;
         return view('listings.show', compact('listing'));
     }
-
+    
     public function apply(Listing $listing, Request $request)
     {
         $listing->clicks()
@@ -59,15 +58,15 @@ class ListingController extends Controller
                 'user_agent' => $request->userAgent(),
                 'ip' => $request->ip()
             ]);
-
+        
         return redirect()->to($listing->apply_link);
     }
-
+    
     public function create()
     {
         return view('listings.create');
     }
-
+    
     public function store(Request $request)
     {
         // process the listing creation form
@@ -80,7 +79,7 @@ class ListingController extends Controller
             'content' => 'required',
             'payment_method_id' => 'required'
         ];
-
+        
         if (!Auth::check()) {
             $validationArray = array_merge($validationArray, [
                 'email' => 'required|email|unique:users',
@@ -88,35 +87,35 @@ class ListingController extends Controller
                 'name' => 'required'
             ]);
         }
-
+        
         $request->validate($validationArray);
-
+        
         // is a user signed in? if not, create one and authenticate
         $user = Auth::user();
-
+        
         if (!$user) {
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password)
             ]);
-
+            
             $user->createAsStripeCustomer();
-
+            
             Auth::login($user);
         }
-
+        
         // process the payment and create the listing
         try {
             $amount = 9900; // $99.00 USD in cents
             if ($request->filled('is_highlighted')) {
                 $amount += 1900;
             }
-
+            
             $user->charge($amount, $request->payment_method_id);
-
+            
             $md = new \ParsedownExtra();
-
+            
             $listing = $user->listings()
                 ->create([
                     'title' => $request->title,
@@ -129,17 +128,17 @@ class ListingController extends Controller
                     'is_highlighted' => $request->filled('is_highlighted'),
                     'is_active' => true
                 ]);
-
+            
             foreach(explode(',', $request->tags) as $requestTag) {
                 $tag = Tag::firstOrCreate([
                     'slug' => Str::slug(trim($requestTag))
                 ], [
                     'name' => ucwords(trim($requestTag))
                 ]);
-
+                
                 $tag->listings()->attach($listing->id);
             }
-
+            
             return redirect()->route('dashboard');
         } catch(\Exception $e) {
             return redirect()->back()
